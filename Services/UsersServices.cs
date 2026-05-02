@@ -42,7 +42,8 @@ namespace Services
             {
                 throw new Exception("הסיסמה חלשה מדי. עליה להכיל לפחות 8 תווים ושילוב של אותיות ומספרים.");
             }
-
+            
+           
             List<User> allUsers = await _iUsersRepository.GetAllUsers();
             foreach (var item in allUsers)
             {
