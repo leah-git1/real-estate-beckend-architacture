@@ -1,4 +1,5 @@
-﻿using DTOs;
+using DTOs;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Services;
 
@@ -6,6 +7,7 @@ namespace WebApiShop.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize(Roles = "Admin")]
     public class AdminController : ControllerBase
     {
         private readonly IAdminService _adminService;
@@ -106,6 +108,7 @@ namespace WebApiShop.Controllers
         }
 
         [HttpPost("inquiry")]
+        [AllowAnonymous]
         public async Task<ActionResult<AdminInquiryDTO>> AddAdminInquiry(AdminInquiryCreateDTO createDto)
         {
             try

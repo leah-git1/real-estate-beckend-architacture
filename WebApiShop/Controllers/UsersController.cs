@@ -1,9 +1,7 @@
-﻿using DTOs;
-using Entities;
+using DTOs;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Services;
-using System.Collections.Generic;
-using System.Threading.Tasks;
 
 namespace WebApiShop.Controllers
 {
@@ -21,6 +19,7 @@ namespace WebApiShop.Controllers
         }
 
         [HttpGet]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<List<UserProfileDTO>>> GetAllUsers()
         {
             List<UserProfileDTO> users = await _iUsersServices.GetAllUsers();
@@ -33,6 +32,7 @@ namespace WebApiShop.Controllers
         }
 
         [HttpGet("{id}")]
+        [Authorize]
         public async Task<ActionResult<UserProfileDTO>> GetUserById(int id)
         {
             UserProfileDTO user = await _iUsersServices.GetUserById(id);
@@ -45,13 +45,15 @@ namespace WebApiShop.Controllers
         }
 
         [HttpPost]
+        [AllowAnonymous]
         public async Task<ActionResult<UserProfileDTO>> RegisterUser(UserRegisterDTO user)
         {
             try
             {
-                UserProfileDTO result = await _iUsersServices.RegisterUser(user);
-                _logger.LogInformation("User registered successfully: ID: {Id}, Email: {Email}", result.UserId, user.Email);
-                return CreatedAtAction(nameof(GetAllUsers), new { id = result.UserId }, result);
+                AuthResultDTO result = await _iUsersServices.RegisterUser(user);
+                SetJwtCookie(result.Token);
+                _logger.LogInformation("User registered successfully: ID: {Id}, Email: {Email}", result.User.UserId, user.Email);
+                return CreatedAtAction(nameof(GetAllUsers), new { id = result.User.UserId }, result.User);
             }
             catch (Exception ex)
             {
@@ -61,19 +63,31 @@ namespace WebApiShop.Controllers
         }
 
         [HttpPost("login")]
+        [AllowAnonymous]
         public async Task<ActionResult<UserProfileDTO>> LoginUser(UserLoginDTO userToLog)
         {
-            UserProfileDTO user = await _iUsersServices.LoginUser(userToLog);
-            if (user == null)
+            AuthResultDTO result = await _iUsersServices.LoginUser(userToLog);
+            if (result == null)
             {
                 _logger.LogInformation("Login failed for email: {Email}", userToLog.Email);
-                return BadRequest("Login failed for email: {Email}");
+                return BadRequest(new { message = "Login failed" });
             }
-            _logger.LogInformation("User login successfully: Name: {FullName}, Email: {Email}", user.FullName, userToLog.Email);
-            return Ok(user);
+
+            SetJwtCookie(result.Token);
+            _logger.LogInformation("User login successfully: Name: {FullName}, Email: {Email}", result.User.FullName, userToLog.Email);
+            return Ok(result.User);
+        }
+
+        [HttpPost("logout")]
+        [Authorize]
+        public ActionResult Logout()
+        {
+            Response.Cookies.Delete("jwt");
+            return NoContent();
         }
 
         [HttpPut("{id}")]
+        [Authorize]
         public async Task<ActionResult> UpdateUser(int id, UserUpdateDTO userToUpdate)
         {
             try
@@ -95,19 +109,29 @@ namespace WebApiShop.Controllers
         }
 
         [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult> DeleteUser(int id)
         {
             UserProfileDTO user = await _iUsersServices.GetUserById(id);
-
             if (user == null)
             {
                 _logger.LogWarning("Delete failed: Attempted to delete non-existent user with ID {id}", id);
                 return NotFound();
             }
-
             await _iUsersServices.DeleteUser(id);
             _logger.LogInformation("User with ID {id} was deleted from the system", id);
             return NoContent();
+        }
+
+        private void SetJwtCookie(string token)
+        {
+            Response.Cookies.Append("jwt", token, new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = true,
+                SameSite = SameSiteMode.Strict,
+                Expires = DateTimeOffset.UtcNow.AddHours(8)
+            });
         }
     }
 }

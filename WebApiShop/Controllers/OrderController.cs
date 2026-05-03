@@ -1,6 +1,7 @@
 ﻿using DTOs;
 using Entities;
 using MailKit.Search;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Services;
 using System.Collections.Generic;
@@ -60,8 +61,8 @@ namespace WebApiShop.Controllers
             return Ok(orders);
         }
 
-        // POST api/<OrderController>
         [HttpPost]
+        [Authorize]
         public async Task<ActionResult<OrderDTO>> AddOrder(OrderCreateDTO order)
         {
             try
@@ -82,6 +83,7 @@ namespace WebApiShop.Controllers
         }
 
         [HttpPut("{orderId}/status")]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult> UpdateOrderStatus(int orderId, OrderStatusUpdateDTO statusDto)
         {
             OrderDTO updatedOrder = await _iOrderService.UpdateOrderStatus(orderId, statusDto);
@@ -96,6 +98,7 @@ namespace WebApiShop.Controllers
 
 
         [HttpPut("{orderId}/delivered")]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult> OrderDelivered(int orderId)
         {
             bool result = await _iOrderService.OrderDelivered(orderId);

@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+using AutoMapper;
 using DTOs;
 using Entities;
 using Repository;
@@ -11,14 +11,16 @@ namespace Services
         private readonly IUsersRepository _iUsersRepository;
         private readonly IPasswordService _iPasswordService;
         private readonly IProductRepository _iProductRepository;
+        private readonly IJwtService _jwtService;
         private readonly IMapper _mapper;
 
-        public UsersServices(IUsersRepository iusersRepository, IPasswordService passwordService, IProductRepository iProductRepository, IMapper mapper)
+        public UsersServices(IUsersRepository iusersRepository, IPasswordService passwordService, IProductRepository iProductRepository, IJwtService jwtService, IMapper mapper)
         {
-            this._iUsersRepository = iusersRepository;
-            this._iPasswordService = passwordService;
-            this._iProductRepository = iProductRepository;
-            this._mapper = mapper;
+            _iUsersRepository = iusersRepository;
+            _iPasswordService = passwordService;
+            _iProductRepository = iProductRepository;
+            _jwtService = jwtService;
+            _mapper = mapper;
         }
 
         public async Task<List<UserProfileDTO>> GetAllUsers()
@@ -34,64 +36,59 @@ namespace Services
                 return null;
             return _mapper.Map<User, UserProfileDTO>(user);
         }
-        public async Task<UserProfileDTO> RegisterUser(UserRegisterDTO userToRegister)
+
+        public async Task<AuthResultDTO> RegisterUser(UserRegisterDTO userToRegister)
         {
             var checkPassword = _iPasswordService.checkStrengthPassword(userToRegister.Password);
-
             if (checkPassword.strength < 2)
-            {
                 throw new Exception("הסיסמה חלשה מדי. עליה להכיל לפחות 8 תווים ושילוב של אותיות ומספרים.");
-            }
-            
-           
+
             List<User> allUsers = await _iUsersRepository.GetAllUsers();
             foreach (var item in allUsers)
             {
-                if(item.Email == userToRegister.Email)
+                if (item.Email == userToRegister.Email)
                     throw new Exception("כתובת האימייל כבר קיימת במערכת.");
             }
 
             User user = _mapper.Map<UserRegisterDTO, User>(userToRegister);
             user = await _iUsersRepository.RegisterUser(user);
-            return _mapper.Map<User, UserProfileDTO>(user);
+
+            string token = _jwtService.GenerateToken(user);
+            UserProfileDTO profile = _mapper.Map<User, UserProfileDTO>(user);
+            return new AuthResultDTO(profile, token);
         }
 
-        public async Task<UserProfileDTO> LoginUser(UserLoginDTO userToLog)
+        public async Task<AuthResultDTO> LoginUser(UserLoginDTO userToLog)
         {
             User user = await _iUsersRepository.LoginUser(userToLog.Email, userToLog.Password);
             if (user == null)
                 return null;
-            return _mapper.Map<User, UserProfileDTO>(user);
+
+            string token = _jwtService.GenerateToken(user);
+            UserProfileDTO profile = _mapper.Map<User, UserProfileDTO>(user);
+            return new AuthResultDTO(profile, token);
         }
 
         public async Task<UserProfileDTO> UpdateUser(UserUpdateDTO userToUpdate, int id)
         {
             User existingUser = await _iUsersRepository.GetUserById(id);
             if (existingUser == null)
-            {
                 throw new Exception("משתמש לא נמצא");
-            }
 
             if (userToUpdate.Password != null && userToUpdate.Password != "")
             {
-                if (userToUpdate.OldPassword == null|| userToUpdate.OldPassword == "")
-                {
+                if (userToUpdate.OldPassword == null || userToUpdate.OldPassword == "")
                     throw new Exception("חובה להזין את הסיסמה הנוכחית");
-                }
-               
+
                 if (existingUser.Password != userToUpdate.OldPassword)
-                {
                     throw new Exception("הסיסמה הנוכחית שגויה");
-                }
-                
+
                 var checkPassword = _iPasswordService.checkStrengthPassword(userToUpdate.Password);
                 if (checkPassword.strength < 2)
-                {
                     throw new Exception("הסיסמה החדשה חלשה מדי. עליה להכיל לפחות 8 תווים ושילוב של אותיות ומספרים");
-                }
             }
-            
-            if(userToUpdate.Email != null && userToUpdate.Email != "")
+
+            if (userToUpdate.Email != null && userToUpdate.Email != "")
             {
                 List<User> allUsers = await _iUsersRepository.GetAllUsers();
                 foreach (var item in allUsers)
@@ -115,7 +112,6 @@ namespace Services
                 Product updateDto = new Product { IsAvailable = false };
                 await _iProductRepository.UpdateProduct(product.ProductId, updateDto);
             }
-
             await _iUsersRepository.DeleteUser(id);
         }
     }

@@ -1,5 +1,6 @@
 ﻿using DTOs;
 using Entities;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Services;
 using System.Collections.Generic;
@@ -63,6 +64,7 @@ namespace WebApiShop.Controllers
         }
 
         [HttpPost]
+        [Authorize]
         public async Task<ActionResult<ProductDetailsDTO>> AddProduct(ProductCreateDTO productCreateDto)
         {
             try
@@ -84,6 +86,7 @@ namespace WebApiShop.Controllers
         }
 
         [HttpPut("{id}")]
+        [Authorize]
         public async Task<ActionResult> UpdateProduct(int id, ProductUpdateDTO productUpdateDto)
         {
             ProductDetailsDTO updatedProduct = await _iProductService.UpdateProduct(id, productUpdateDto);
@@ -97,6 +100,7 @@ namespace WebApiShop.Controllers
         }
 
         [HttpDelete("{id}")]
+        [Authorize]
         public async Task<ActionResult> DeleteProduct(int id)
         {
             bool isDeleted = await _iProductService.DeleteProduct(id);
