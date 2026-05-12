@@ -7,6 +7,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace Services
 {
@@ -15,12 +17,24 @@ namespace Services
         private readonly IProductRepository _iProductRepository;
         private readonly IOrderRepository _iOrderRepository;
         private readonly IMapper _mapper;
+        private readonly ICacheService _cacheService;
+        private readonly IConfiguration _configuration;
+        private readonly ILogger<ProductService> _logger;
 
-        public ProductService(IProductRepository iProductRepository, IOrderRepository iOrderRepository, IMapper mapper)
+        public ProductService(
+            IProductRepository iProductRepository,
+            IOrderRepository iOrderRepository,
+            IMapper mapper,
+            ICacheService cacheService,
+            IConfiguration configuration,
+            ILogger<ProductService> logger)
         {
             this._iProductRepository = iProductRepository;
             this._iOrderRepository = iOrderRepository;
             this._mapper = mapper;
+            this._cacheService = cacheService;
+            this._configuration = configuration;
+            this._logger = logger;
         }
 
         public async Task<PageResponseDTO<ProductSummaryDTO>> GetProducts(int?[] categoryIds, string? title, string? city, decimal? minPrice, decimal? maxPrice, int? rooms, int? beds, int position, int skip)
@@ -53,12 +67,29 @@ namespace Services
 
         public async Task<ProductDetailsDTO> GetProductById(int id)
         {
+            string cacheKey = $"product:{id}";
+            
+            // Try to get from cache first
+            var cachedProduct = await _cacheService.GetAsync<ProductDetailsDTO>(cacheKey);
+            if (cachedProduct != null)
+            {
+                return cachedProduct;
+            }
+
+            // Cache miss - fetch from database
             Product product = await _iProductRepository.GetProductById(id);
             if (product == null || product.IsAvailable == false)
             {
                 return null;
             }
-            return _mapper.Map<Product, ProductDetailsDTO>(product);
+
+            var result = _mapper.Map<Product, ProductDetailsDTO>(product);
+            
+            // Store in cache with TTL from configuration
+            var productTtl = _configuration.GetValue("Redis:CacheTTL:ProductSeconds", 600);
+            await _cacheService.SetAsync(cacheKey, result, TimeSpan.FromSeconds(productTtl));
+            
+            return result;
         }
 
 
@@ -78,34 +109,46 @@ namespace Services
         }
 
  
-            public async Task<ProductDetailsDTO> UpdateProduct(int id, ProductUpdateDTO productUpdateDto)
+        public async Task<ProductDetailsDTO> UpdateProduct(int id, ProductUpdateDTO productUpdateDto)
+        {
+            Product existingProduct = await _iProductRepository.GetProductById(id);
+            if (existingProduct == null)
             {
-                Product existingProduct = await _iProductRepository.GetProductById(id);
-                if (existingProduct == null)
-                {
-                    return null;
-                }
+                return null;
+            }
 
-                if (productUpdateDto.Title != null) existingProduct.Title = productUpdateDto.Title;
-                if (productUpdateDto.Description != null) existingProduct.Description = productUpdateDto.Description;
-                if (productUpdateDto.Price.HasValue) existingProduct.Price = productUpdateDto.Price.Value;
-                if (productUpdateDto.City != null) existingProduct.City = productUpdateDto.City;
-                if (productUpdateDto.CategoryId.HasValue) existingProduct.CategoryId = productUpdateDto.CategoryId.Value;
-                if (productUpdateDto.TransactionType != null) existingProduct.TransactionType = productUpdateDto.TransactionType;
-                if (productUpdateDto.Rooms.HasValue) existingProduct.Rooms = productUpdateDto.Rooms;
-                if (productUpdateDto.Beds.HasValue) existingProduct.Beds = productUpdateDto.Beds;
-                if (productUpdateDto.IsAvailable.HasValue) existingProduct.IsAvailable = productUpdateDto.IsAvailable.Value;
-                if (productUpdateDto.ImageUrl != null) existingProduct.ImageUrl = productUpdateDto.ImageUrl;
+            if (productUpdateDto.Title != null) existingProduct.Title = productUpdateDto.Title;
+            if (productUpdateDto.Description != null) existingProduct.Description = productUpdateDto.Description;
+            if (productUpdateDto.Price.HasValue) existingProduct.Price = productUpdateDto.Price.Value;
+            if (productUpdateDto.City != null) existingProduct.City = productUpdateDto.City;
+            if (productUpdateDto.CategoryId.HasValue) existingProduct.CategoryId = productUpdateDto.CategoryId.Value;
+            if (productUpdateDto.TransactionType != null) existingProduct.TransactionType = productUpdateDto.TransactionType;
+            if (productUpdateDto.Rooms.HasValue) existingProduct.Rooms = productUpdateDto.Rooms;
+            if (productUpdateDto.Beds.HasValue) existingProduct.Beds = productUpdateDto.Beds;
+            if (productUpdateDto.IsAvailable.HasValue) existingProduct.IsAvailable = productUpdateDto.IsAvailable.Value;
+            if (productUpdateDto.ImageUrl != null) existingProduct.ImageUrl = productUpdateDto.ImageUrl;
 
-                Product updatedProduct = await _iProductRepository.UpdateProduct(id, existingProduct);
-                return _mapper.Map<Product, ProductDetailsDTO>(updatedProduct);
-           
+            Product updatedProduct = await _iProductRepository.UpdateProduct(id, existingProduct);
+            
+            // Invalidate cache for this product
+            string cacheKey = $"product:{id}";
+            await _cacheService.RemoveAsync(cacheKey);
+            
+            return _mapper.Map<Product, ProductDetailsDTO>(updatedProduct);
         }
-
 
         public async Task<bool> DeleteProduct(int id)
         {
-            return await _iProductRepository.DeleteProduct(id);
+            bool result = await _iProductRepository.DeleteProduct(id);
+            
+            // Invalidate cache for this product
+            if (result)
+            {
+                string cacheKey = $"product:{id}";
+                await _cacheService.RemoveAsync(cacheKey);
+            }
+            
+            return result;
         }
 
         public async Task<bool> CheckAvailability(int productId, DateTime? start, DateTime? end)

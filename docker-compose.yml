@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  # SQL Server Database
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: realestate-sqlserver
+    environment:
+      SA_PASSWORD: "RealEstate@2024"
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: "Developer"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD", "/opt/mssql-tools/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-P", "RealEstate@2024", "-Q", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache with Password
+  redis:
+    image: redis:7-alpine
+    container_name: realestate-redis
+    command: redis-server --requirepass "redis_password_2024"
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis_password_2024", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Real Estate API (optional - uncomment if running container)
+  # api:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: realestate-api
+  #   depends_on:
+  #     sqlserver:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   environment:
+  #     ConnectionStrings__DefaultConnection: "Server=sqlserver;Database=RealEstateDB;User Id=sa;Password=RealEstate@2024;"
+  #     Redis__Connection: "redis:6379,password=redis_password_2024"
+  #     ASPNETCORE_ENVIRONMENT: "Development"
+  #   ports:
+  #     - "5202:5202"
+
+volumes:
+  sqlserver_data:
+  redis_data:
+
+networks:
+  default:
+    name: realestate-network

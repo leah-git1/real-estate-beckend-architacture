@@ -6,6 +6,7 @@ using NLog.Web;
 using Repositories;
 using Repository;
 using Services;
+using StackExchange.Redis;
 using System.Text;
 using WebApiShop;
 using WebApiShop.Middleware;
@@ -68,6 +69,12 @@ builder.Services.AddAuthentication(options =>
 });
 
 builder.Services.AddAuthorization();
+
+// Redis Configuration
+var redisConnection = builder.Configuration["Redis:Connection"] ?? "localhost:6379,password=redis_password_2024";
+var redis = ConnectionMultiplexer.Connect(redisConnection);
+builder.Services.AddSingleton<IConnectionMultiplexer>(redis);
+builder.Services.AddScoped<ICacheService, CacheService>();
 
 builder.Host.UseNLog();
 

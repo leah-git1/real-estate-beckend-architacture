@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  sqlserver:
+    environment:
+      SA_PASSWORD: "RealEstate@2024"
+    ports:
+      - "1433:1433"
+
+  redis:
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass "redis_password_2024"
