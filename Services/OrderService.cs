@@ -17,15 +17,17 @@ namespace Services
         private readonly IProductRepository _iProductRepository;
         private readonly IProductService _iProductService;
         private readonly IUsersRepository _iUsersRepository;
+        private readonly IKafkaProducerService _kafkaProducerService;
         private readonly IMapper _mapper;   
         private readonly ILogger<OrderService> _logger;
 
-        public OrderService(IOrderRepository iOrderRepository, IProductRepository iProductRepository, IProductService iProductService, IUsersRepository iUsersRepository, IMapper mapper, ILogger<OrderService> logger)
+        public OrderService(IOrderRepository iOrderRepository, IProductRepository iProductRepository, IProductService iProductService, IUsersRepository iUsersRepository, IKafkaProducerService kafkaProducerService, IMapper mapper, ILogger<OrderService> logger)
         {
             this._iOrderRepository = iOrderRepository;
             this._iProductRepository = iProductRepository;
             this._iProductService = iProductService;
             this._iUsersRepository = iUsersRepository;
+            this._kafkaProducerService = kafkaProducerService;
             this._mapper = mapper;
             this._logger = logger;
         }
@@ -114,6 +116,23 @@ namespace Services
             order.OrderDate = DateTime.UtcNow;
 
             Order orderTbl = await _iOrderRepository.AddOrder(order);
+
+            // Send order notification to Kafka
+            try
+            {
+                await _kafkaProducerService.SendOrderNotificationAsync(
+                    orderTbl.OrderId,
+                    orderTbl.Status ?? "Pending",
+                    orderTbl.TotalAmount,
+                    user.UserId,
+                    user.Email);
+
+                _logger.LogInformation($"Order notification sent to Kafka for OrderId: {orderTbl.OrderId}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Failed to send Kafka notification for OrderId: {orderTbl.OrderId}. Order was created successfully.");
+            }
 
             return _mapper.Map<OrderDTO>(orderTbl);
         }
