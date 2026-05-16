@@ -1,5 +1,7 @@
 using StackExchange.Redis;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using System.Linq;
 
 namespace Services;
 
@@ -84,13 +86,18 @@ public class CacheService : ICacheService
         try
         {
             var server = _redis.GetServer(_redis.GetEndPoints().First());
-            var keys = await server.KeysAsync(pattern: pattern);
+            var keysList = new List<RedisKey>();
+            
+            await foreach (var key in server.KeysAsync(pattern: pattern))
+            {
+                keysList.Add(key);
+            }
 
-            if (keys.Length > 0)
+            if (keysList.Count > 0)
             {
                 var db = _redis.GetDatabase();
-                await db.KeyDeleteAsync(keys);
-                _logger.LogInformation($"Cache REMOVED {keys.Length} keys matching pattern: {pattern}");
+                await db.KeyDeleteAsync(keysList.ToArray());
+                _logger.LogInformation($"Cache REMOVED {keysList.Count} keys matching pattern: {pattern}");
             }
             else
             {

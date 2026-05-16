@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using DTOs;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using BCrypt.Net;
 
 namespace Repository
 {
@@ -34,8 +35,14 @@ namespace Repository
 
         public async Task<User> LoginUser(string email, string password)
         {
-            return await _ShopContext.Users.FirstOrDefaultAsync(x =>
-                x.Email == email && x.Password == password);
+            var user = await _ShopContext.Users.FirstOrDefaultAsync(x => x.Email == email);
+            if (user == null)
+                return null;
+
+            if (BCrypt.Net.BCrypt.Verify(password, user.Password))
+                return user;
+
+            return null;
         }
 
         public async Task<User> UpdateUser(User userToUpdate, int id)

@@ -1,5 +1,6 @@
 ﻿using Entities;
 using Repository;
+using BCrypt.Net;
 
 namespace Services
 {
@@ -13,6 +14,16 @@ namespace Services
             pass.password = password;
             pass.strength = strength;
             return pass;
+        }
+
+        public string HashPassword(string password)
+        {
+            return BCrypt.Net.BCrypt.HashPassword(password);
+        }
+
+        public bool VerifyPassword(string enteredPassword, string hash)
+        {
+            return BCrypt.Net.BCrypt.Verify(enteredPassword, hash);
         }
     }
 }

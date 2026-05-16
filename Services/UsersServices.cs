@@ -51,6 +51,7 @@ namespace Services
             }
 
             User user = _mapper.Map<UserRegisterDTO, User>(userToRegister);
+            user.Password = _iPasswordService.HashPassword(user.Password);
             user = await _iUsersRepository.RegisterUser(user);
 
             string token = _jwtService.GenerateToken(user);
@@ -80,7 +81,7 @@ namespace Services
                 if (userToUpdate.OldPassword == null || userToUpdate.OldPassword == "")
                     throw new Exception("חובה להזין את הסיסמה הנוכחית");
 
-                if (existingUser.Password != userToUpdate.OldPassword)
+                if (!_iPasswordService.VerifyPassword(userToUpdate.OldPassword, existingUser.Password))
                     throw new Exception("הסיסמה הנוכחית שגויה");
 
                 var checkPassword = _iPasswordService.checkStrengthPassword(userToUpdate.Password);
@@ -99,6 +100,10 @@ namespace Services
             }
 
             User user = _mapper.Map<UserUpdateDTO, User>(userToUpdate);
+            if (userToUpdate.Password != null && userToUpdate.Password != "")
+            {
+                user.Password = _iPasswordService.HashPassword(userToUpdate.Password);
+            }
             user.UserId = id;
             user = await _iUsersRepository.UpdateUser(user, id);
             return _mapper.Map<User, UserProfileDTO>(user);
