@@ -77,7 +77,7 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(redis);
 builder.Services.AddScoped<ICacheService, CacheService>();
 
 
-builder.Services.AddScoped<IKafkaProducerService, KafkaProducerService>();
+builder.Services.AddSingleton<IKafkaProducerService, KafkaProducerService>();
 
 builder.Host.UseNLog();
 
