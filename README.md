@@ -28,11 +28,12 @@ ASP.NET Core Web API for a real estate platform. Enables property listings, user
 |-----------|------------|
 | Framework | ASP.NET Core 8.0 |
 | Database | SQL Server |
-| ORM | Entity Framework Core |
+| ORM | Entity Framework Core 8 |
 | Logging | NLog (file + email) |
 | Email | MailKit (Gmail SMTP) |
 | Mapping | AutoMapper |
-| API Docs | Swagger (Development) |
+| Auth | JWT (HttpOnly cookie) |
+| API Docs | Swagger (Development only) |
 
 ---
 
@@ -41,7 +42,7 @@ ASP.NET Core Web API for a real estate platform. Enables property listings, user
 ```
 Real-Estate-Backend/
 ├── WebApiShop/                    # Main API project
-│   ├── Controllers/               # API endpoints
+│   ├── Controllers/
 │   │   ├── UsersController.cs
 │   │   ├── ProductController.cs
 │   │   ├── OrderController.cs
@@ -49,19 +50,23 @@ Real-Estate-Backend/
 │   │   ├── AdminController.cs
 │   │   ├── PasswordController.cs
 │   │   ├── ProductImageController.cs
-│   │   ├── PropertyInquiryController.cs
-│   │   └── RatingController.cs
+│   │   └── PropertyInquiryController.cs
 │   ├── Middleware/
 │   │   ├── ErrorHandlingMiddleware.cs
 │   │   ├── AdminAuthorizationMiddleware.cs
 │   │   └── RatingMiddleware.cs
+│   ├── Properties/
+│   │   └── launchSettings.json
+│   ├── wwwroot/
+│   │   └── images/               # Uploaded product images
 │   ├── Program.cs
 │   ├── appsettings.json
 │   ├── appsettings.Development.json
-│   └── nlog.config
-├── Entities/                      # Domain models
-├── Repository/                    # Data access (EF Core, DbContext)
-├── Services/                      # Business logic
+│   ├── nlog.config
+│   └── SCRIPT.txt                # SQL script to create the database
+├── Entities/                      # Domain models (EF Core Power Tools generated)
+├── Repository/                    # Data access layer (EF Core, DbContext)
+├── Services/                      # Business logic layer
 ├── DTOs/                          # Data Transfer Objects
 └── TestProject/                   # Unit & integration tests
 ```
@@ -87,8 +92,6 @@ dotnet --version
 ### 1. Restore Dependencies
 
 ```powershell
-dotnet restore
-# or
 dotnet restore WebApiShop.sln
 ```
 
@@ -98,7 +101,7 @@ dotnet restore WebApiShop.sln
 
 1. Open SQL Server Management Studio (SSMS) or run `sqlcmd`
 2. Execute the script at `WebApiShop/SCRIPT.txt`
-3. Creates `RealEstateDB_` and tables: Users, Categories, Products, Orders, OrderItems, ProductImages, Ratings, PropertyInquiries, AdminInquiries
+3. Creates `RealEstateDB_` and all required tables
 
 **Option B: EF Core Migrations**
 
@@ -119,14 +122,12 @@ Edit `WebApiShop/appsettings.json`:
 }
 ```
 
-| Parameter | Description | Example |
-|-----------|-------------|---------|
-| Server | SQL Server instance | `DESKTOP-XXX`, `localhost`, `(localdb)\MSSQLLocalDB` |
-| Database | Database name | `RealEstateDB_` |
-| Trusted_Connection | Windows auth | `True` |
-| TrustServerCertificate | Skip cert validation (dev) | `True` |
+Also update the hardcoded connection string in `Program.cs` (line 31) to use the config:
 
-For SQL auth: `Server=SERVER;Database=RealEstateDB_;User Id=USER;Password=PASSWORD;TrustServerCertificate=True;`
+```csharp
+builder.Services.AddDbContext<ShopContext>(option =>
+    option.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+```
 
 ### 4. Build and Run
 
@@ -138,7 +139,7 @@ dotnet run --project WebApiShop
 **Launch profiles:**
 - HTTP: `http://localhost:5202`
 - HTTPS: `https://localhost:7046`
-- Swagger: `http://localhost:5202/swagger`
+- Swagger: `http://localhost:5202/swagger` (Development only)
 
 ### Quick Commands
 
@@ -156,61 +157,46 @@ dotnet run --project WebApiShop
 
 ### appsettings.json
 
-**Logging:**
 ```json
-"Logging": {
-  "LogLevel": {
-    "Default": "Information",
-    "Microsoft.AspNetCore": "Warning"
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "AllowedHosts": "*",
+  "ConnectionStrings": {
+    "DefaultConnection": "Server=YOUR_SERVER;Database=RealEstateDB_;Trusted_Connection=True;TrustServerCertificate=True;"
+  },
+  "EmailSettings": {
+    "SmtpServer": "smtp.gmail.com",
+    "SmtpPort": "587",
+    "SenderEmail": "your-email@gmail.com",
+    "SenderPassword": "your-app-password",
+    "RecipientEmail": "recipient@example.com"
   }
 }
 ```
 
-**AllowedHosts:** `"*"` (allow any host; restrict in production)
+> **Warning:** Never commit real credentials to source control. Use User Secrets or environment variables.
 
-**EmailSettings (optional):**
-```json
-"EmailSettings": {
-  "SmtpServer": "smtp.gmail.com",
-  "SmtpPort": "587",
-  "SenderEmail": "your-email@gmail.com",
-  "SenderPassword": "your-app-password",
-  "RecipientEmail": "recipient@example.com"
-}
+### User Secrets (recommended for dev)
+
+```powershell
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Server=...;Database=...;" --project WebApiShop
+dotnet user-secrets set "EmailSettings:SenderPassword" "app-password" --project WebApiShop
 ```
-
-### appsettings.Development.json
-
-Override connection string for local development.
-
-### launchSettings.json (`WebApiShop/Properties/`)
-
-| Profile | URLs |
-|---------|------|
-| http | http://localhost:5202 |
-| https | https://localhost:7046; http://localhost:5202 |
-| IIS Express | http://localhost:44146, https://localhost:44305 |
 
 ### nlog.config
 
-- **File logging:** `../../../logFile.log`
-- **Email logging:** Sends on Error level (configure SMTP in `nlog.config`)
+- File logging: `../../../logFile.log`
+- Email logging: Sends on Error level (configure SMTP in `nlog.config`)
 
 ### CORS (Program.cs)
 
 - Allowed origin: `http://localhost:4200` (Angular frontend)
 - Exposed header: `IsAdmin`
-
-### User Secrets (recommended for dev)
-
-```powershell
-dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Server=...;Database=...;..." --project WebApiShop
-dotnet user-secrets set "EmailSettings:SenderPassword" "app-password" --project WebApiShop
-```
-
-### Environment Variables
-
-Override config: `Section__Key` (e.g., `ConnectionStrings__DefaultConnection`)
 
 ---
 
@@ -236,147 +222,155 @@ Database (SQL Server)
 
 ```
 WebApiShop → Services
-Services → Repository, DTOs
+Services   → Repository, DTOs
 Repository → Entities, DTOs
 TestProject → DTOs, Entities, Repository, Services
 ```
 
 ### Middleware Pipeline (order)
 
-1. **UseErrorHandling** – Catches unhandled exceptions, returns 500 JSON
-2. **AdminAuthorizationMiddleware** – Blocks non-admin access to `/api/admin/*` (except POST `/api/admin/inquiry`)
-3. **UseRating** – Logs every request (Host, Method, Path, etc.) to Ratings table
-4. UseStaticFiles, UseRouting, UseAuthorization, MapControllers
-
-### Entity Model (ShopContext)
-
-| DbSet | Entity | Description |
-|-------|--------|-------------|
-| Categories | Category | Property types |
-| Products | Product | Real estate listings |
-| ProductImages | ProductImage | Additional images per product |
-| Users | User | Users (owners, customers, admins) |
-| Orders | Order | Orders |
-| OrderItems | OrderItem | Line items in orders |
-| PropertyInquiries | PropertyInquiry | Inquiries about properties |
-| AdminInquiries | AdminInquiry | General contact inquiries |
-| Ratings | Rating | Request logging |
+1. `UseHttpsRedirection`
+2. `UseCors`
+3. `UseErrorHandling` – Catches unhandled exceptions, returns 500
+4. `AdminAuthorizationMiddleware` – Blocks non-admin access to `/api/admin/*` (except POST `/api/admin/inquiry`)
+5. `UseRating` – Logs every request to the Ratings table
+6. `UseStaticFiles`, `UseRouting`, `UseCors`, `UseAuthorization`, `MapControllers`
 
 ### Key Patterns
 
 - **Repository pattern** – Abstracts data access
 - **Service pattern** – Business logic in services
-- **DTO pattern** – Entities not exposed directly
-- **AutoMapper** – Maps Entities ↔ DTOs in `Services/AutoMapping.cs`
-- **Dependency Injection** – All services/repos registered as Scoped in Program.cs
+- **DTO pattern** – Entities never exposed directly
+- **AutoMapper** – Mappings defined in `Services/AutoMapping.cs`
+- **Dependency Injection** – All services/repos registered as Scoped in `Program.cs`
 
 ---
 
 ## API Reference
 
-**Base URL:** `/api`  
-**Content-Type:** `application/json` (unless noted)  
-**Admin routes:** Require `IsAdmin: true` header (except POST `/api/admin/inquiry`)  
+**Base URL:** `/api`
+**Content-Type:** `application/json`
+**Auth:** JWT stored in HttpOnly cookie (`jwt`), set on login/register
+**Admin routes:** Require `IsAdmin: true` header AND valid JWT with Admin role (except POST `/api/admin/inquiry`)
 **CORS:** `http://localhost:4200`
+
+---
 
 ### Users (`/api/users`)
 
-| Method | Route | Description |
-|--------|-------|-------------|
-| GET | `/` | Get all users |
-| GET | `/{id}` | Get user by ID |
-| POST | `/` | Register (UserRegisterDTO) |
-| POST | `/login` | Login (UserLoginDTO) |
-| PUT | `/{id}` | Update user |
-| DELETE | `/{id}` | Delete user |
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| GET | `/` | Admin | Get all users |
+| GET | `/{id}` | Authorized | Get user by ID |
+| POST | `/` | Public | Register |
+| POST | `/login` | Public | Login |
+| POST | `/logout` | Authorized | Logout (clears JWT cookie) |
+| PUT | `/{id}` | Authorized | Update user |
+| DELETE | `/{id}` | Admin | Delete user |
 
-**Register body:** FullName, Email, Password (min 8, strength ≥2), Phone, Address  
-**Login body:** Email, Password  
-**Response:** UserProfileDTO (no password)
+**Register / Login response:** Sets `jwt` HttpOnly cookie, returns `UserProfileDTO`
+
+---
 
 ### Products (`/api/product`)
 
-| Method | Route | Description |
-|--------|-------|-------------|
-| GET | `/` | List (filtered, paged) |
-| GET | `/{id}` | Get by ID |
-| POST | `/` | Create |
-| PUT | `/{id}` | Update |
-| DELETE | `/{id}` | Delete |
-| GET | `owner/{ownerId}` | Get by owner |
-| GET | `check-availability?productId=&start=&end=` | Check availability |
-| GET | `search?query=` | Search |
-| GET | `featured?count=5` | Featured products |
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| GET | `/` | Public | List products (filtered, paged) |
+| GET | `/{id}` | Public | Get by ID |
+| POST | `/` | Authorized | Create product |
+| PUT | `/{id}` | Authorized | Update product |
+| DELETE | `/{id}` | Authorized | Delete product |
+| GET | `/owner/{ownerId}` | Public | Get by owner |
+| GET | `/check-availability` | Public | Check availability |
+| GET | `/search?query=` | Public | Search products |
+| GET | `/featured?count=5` | Public | Featured products |
 
-**List query params:** categoryIds, title, city, minPrice, maxPrice, rooms, beds, position, skip
+**List query params:** `categoryIds`, `title`, `city`, `minPrice`, `maxPrice`, `rooms`, `beds`, `position`, `skip`
+
+**check-availability query params:** `productId`, `start` (DateTime), `end` (DateTime)
+
+---
 
 ### Orders (`/api/order`)
 
-| Method | Route | Description |
-|--------|-------|-------------|
-| GET | `/` | Get all orders |
-| GET | `/{id}` | Get by ID |
-| GET | `user/{userId}` | Get by user |
-| POST | `/` | Create (OrderCreateDTO) |
-| PUT | `/{orderId}/status` | Update status |
-| PUT | `/{orderId}/delivered` | Mark delivered |
-| GET | `occupied-dates/{productId}?month=&year=` | Occupied dates |
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| GET | `/` | Public | Get all orders |
+| GET | `/{id}` | Public | Get by ID |
+| GET | `/user/{userId}` | Public | Get by user |
+| POST | `/` | Public | Create order |
+| PUT | `/{orderId}/status` | Public | Update status |
+| PUT | `/{orderId}/delivered` | Public | Mark delivered |
+| GET | `/occupied-dates/{productId}` | Public | Occupied dates for month/year |
 
-**Create body:** UserId, OrderItems (ProductId, StartDate?, EndDate?)
+**Create body:** `UserId`, `OrderItems[]` (ProductId, StartDate?, EndDate?)
+
+**occupied-dates query params:** `month`, `year`
+
+---
 
 ### Categories (`/api/category`)
 
-| Method | Route | Description |
-|--------|-------|-------------|
-| GET | `/` | Get all |
-| GET | `/{id}` | Get by ID |
-| POST | `/` | Create |
-| PUT | `/{id}` | Update |
-| DELETE | `/{id}` | Delete |
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| GET | `/` | Public | Get all |
+| GET | `/{id}` | Public | Get by ID |
+| POST | `/` | Public | Create |
+| PUT | `/{id}` | Public | Update |
+| DELETE | `/{id}` | Public | Delete |
+
+---
 
 ### Product Images (`/api/productimage`)
 
-| Method | Route | Description |
-|--------|-------|-------------|
-| GET | `/{id}` | Get by ID |
-| GET | `productImage/{productId}` | Get by product |
-| POST | `/` | Add image (URL) |
-| POST | `upload` | Upload file (multipart/form-data) |
-| PUT | `/{imageId}` | Update |
-| DELETE | `/{id}` | Delete |
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| GET | `/{id}` | Public | Get by ID |
+| GET | `/productImage/{productId}` | Public | Get by product |
+| POST | `/` | Public | Add image (URL) |
+| POST | `/upload` | Public | Upload file (multipart/form-data) |
+| PUT | `/{imageId}` | Public | Update |
+| DELETE | `/{id}` | Public | Delete |
+
+---
 
 ### Property Inquiries (`/api/propertyinquiry`)
 
-| Method | Route | Description |
-|--------|-------|-------------|
-| GET | `/` | Get all |
-| GET | `/{id}` | Get by ID |
-| GET | `owner/{ownerId}` | Get by owner |
-| GET | `user/{userId}` | Get by user |
-| POST | `/` | Create |
-| PUT | `/{id}/status` | Update status |
-| DELETE | `/{id}` | Delete |
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| GET | `/` | Public | Get all |
+| GET | `/{id}` | Public | Get by ID |
+| GET | `/owner/{ownerId}` | Public | Get by owner |
+| GET | `/user/{userId}` | Public | Get by user |
+| POST | `/` | Public | Create |
+| PUT | `/{id}/status` | Public | Update status |
+| DELETE | `/{id}` | Public | Delete |
 
-**Create body:** ProductId, UserId, OwnerId, Name, Phone, Email, Message
+**Create body:** `ProductId`, `UserId`, `OwnerId`, `Name`, `Phone`, `Email`, `Message`
+
+---
 
 ### Admin (`/api/admin`)
 
-**All require `IsAdmin: true` except POST inquiry.**
+**All routes require `IsAdmin: true` header + Admin JWT role, except POST `/inquiry`.**
 
 | Method | Route | Description |
 |--------|-------|-------------|
-| GET | `users` | Get all users |
-| GET | `products` | Get all products |
-| GET | `orders` | Get all orders |
-| GET | `statistics` | Admin stats |
-| GET | `inquiries` | Get admin inquiries |
-| GET | `inquiry/{id}` | Get inquiry by ID |
-| POST | `inquiry` | Create inquiry (public) |
-| PUT | `inquiry/{id}/status` | Update inquiry status |
-| DELETE | `user/{id}` | Delete user |
-| DELETE | `product/{id}` | Delete product |
-| DELETE | `order/{id}` | Delete order |
-| DELETE | `inquiry/{id}` | Delete inquiry |
+| GET | `/users` | Get all users |
+| GET | `/products` | Get all products |
+| GET | `/orders` | Get all orders |
+| GET | `/statistics` | Admin statistics |
+| GET | `/inquiries` | Get all admin inquiries |
+| GET | `/inquiry/{id}` | Get inquiry by ID |
+| POST | `/inquiry` | Create inquiry (public) |
+| PUT | `/inquiry/{id}/status` | Update inquiry status |
+| DELETE | `/user/{id}` | Delete user |
+| DELETE | `/product/{id}` | Delete product |
+| DELETE | `/order/{id}` | Delete order |
+| DELETE | `/inquiry/{id}` | Delete inquiry |
+
+---
 
 ### Password (`/api/password`)
 
@@ -384,20 +378,17 @@ TestProject → DTOs, Entities, Repository, Services
 |--------|-------|-------------|
 | POST | `/` | Check password strength (body: raw string) |
 
-**Response:** CheckPassword (password, strength 0–4)
+**Response:** `CheckPassword` (password, strength 0–4)
 
-### Ratings (`/api/rating`)
-
-| Method | Route | Description |
-|--------|-------|-------------|
-| GET | `all` | Get all ratings (analytics) |
+---
 
 ### Error Responses
 
 | Status | When |
 |--------|------|
-| 400 | Validation, bad request |
-| 403 | Admin route without IsAdmin header |
+| 400 | Validation or bad request |
+| 401 | Unauthorized (missing/invalid JWT) |
+| 403 | Admin route without required header/role |
 | 404 | Resource not found |
 | 409 | Order conflict (product unavailable) |
 | 500 | Unhandled exception |
@@ -406,39 +397,54 @@ TestProject → DTOs, Entities, Repository, Services
 
 ## Data Models
 
+### Key Entities
+
+**User:** `UserId`, `FullName`, `Email`, `Password`, `Phone`, `Address`, `IsAdmin`
+
+**Product:** `ProductId`, `Title`, `Description`, `Price`, `ImageUrl`, `CategoryId`, `City`, `Rooms`, `Beds`, `OwnerId`, `IsAvailable`, `TransactionType`
+
+**Order:** `OrderId`, `UserId`, `OrderDate`, `TotalAmount`, `Status`
+
+**OrderItem:** `OrderItemId`, `OrderId`, `ProductId`, `StartDate`, `EndDate`, `PriceAtPurchase`
+
+**Category:** `CategoryId`, `CategoryName`, `Description`
+
+**PropertyInquiry:** `InquiryId`, `ProductId`, `UserId`, `OwnerId`, `Name`, `Phone`, `Email`, `Message`, `Status`
+
+**AdminInquiry:** `InquiryId`, `UserId`, `Name`, `Email`, `Phone`, `Subject`, `Message`, `Status`
+
+**Rating:** `RatingId`, `Host`, `Method`, `Path`, `Referer`, `UserAgent`, `RecordDate`
+
 ### Entity Relationships
 
 ```
-User ◄── Products (Owner), Orders
-Product ◄── ProductImages, OrderItems, PropertyInquiries
-Category ◄── Products
-Order ◄── OrderItems
-OrderItem ◄── Product
-PropertyInquiry ◄── Product, User, Owner
-AdminInquiry ◄── User (optional)
-Rating (standalone)
+User       ◄── Products (Owner), Orders
+Product    ◄── ProductImages, OrderItems, PropertyInquiries
+Category   ◄── Products
+Order      ◄── OrderItems
+OrderItem  ◄── Product
+PropertyInquiry ◄── Product, User, Owner(User)
+AdminInquiry    ◄── User (optional)
+Rating (standalone - request log)
 ```
 
-### Key Entities
+### DTOs
 
-**User:** UserId, FullName, Email, Password, Phone, Address, IsAdmin  
-**Product:** ProductId, Title, Description, Price, ImageUrl, CategoryId, City, Rooms, Beds, OwnerId, IsAvailable, TransactionType  
-**Order:** OrderId, UserId, OrderDate, TotalAmount, Status  
-**OrderItem:** OrderItemId, OrderId, ProductId, StartDate, EndDate, PriceAtPurchase  
-**Category:** CategoryId, CategoryName, Description  
-**PropertyInquiry:** InquiryId, ProductId, UserId, OwnerId, Name, Phone, Email, Message, Status  
-**AdminInquiry:** InquiryId, UserId, Name, Email, Phone, Subject, Message, Status  
-**Rating:** RatingId, Host, Method, Path, Referer, UserAgent, RecordDate
+**User:** `UserProfileDTO`, `UserRegisterDTO`, `UserLoginDTO`, `UserUpdateDTO`, `AuthResultDTO`
 
-### DTOs by Domain
+**Product:** `ProductSummaryDTO`, `ProductDetailsDTO`, `ProductCreateDTO`, `ProductUpdateDTO`, `ProductViewDTO`, `PageResponseDTO<T>`
 
-**User:** UserProfileDTO, UserRegisterDTO, UserLoginDTO, UserUpdateDTO  
-**Product:** ProductSummaryDTO, ProductDetailsDTO, ProductCreateDTO, ProductUpdateDTO, PageResponse\<T\>  
-**Order:** OrderDTO, OrderCreateDTO, OrderItemCreateDTO, OrderStatusUpdateDTO, OccupiedDatesResponseDTO  
-**Category:** CategoryDTO, CategoryCreateDTO, CategoryUpdateDTO  
-**Inquiries:** PropertyInquiryDTO, PropertyInquiryCreateDTO, AdminInquiryDTO, AdminInquiryCreateDTO
+**Order:** `OrderDTO`, `OrderCreateDTO`, `OrderItemDTO`, `OrderStatusUpdateDTO`, `OccupiedDatesResponseDTO`, `OrderHistoryDTO`, `OrderHistoryAdminDTO`, `OrderAdminDTO`
 
-Mappings in `Services/AutoMapping.cs`.
+**Category:** `CategoryDTO`, `CategoryCreateDTO`, `CategoryUpdateDTO`
+
+**Images:** `ProductImageDTO`, `ProductImageCreateDTO`, `ProductImageUpdateDTO`, `ProductImageUrlDTO`
+
+**Inquiries:** `PropertyInquiryDTO`, `PropertyInquiryCreateDTO`, `PropertyInquiryStatusUpdateDTO`, `AdminInquiryDTO`, `AdminInquiryCreateDTO`, `AdminInquiryStatusUpdateDTO`
+
+**Admin:** `AdminStatisticsDTO`
+
+All mappings are defined in `Services/AutoMapping.cs`.
 
 ---
 
@@ -446,34 +452,42 @@ Mappings in `Services/AutoMapping.cs`.
 
 ### Overview
 
-No JWT or bearer tokens. Login returns UserProfileDTO with IsAdmin. Frontend stores user state and sends `IsAdmin: true` for admin endpoints. AdminAuthorizationMiddleware validates this header.
+Authentication uses JWT tokens stored in an **HttpOnly cookie** (`jwt`, 8-hour expiry). Admin access additionally requires the `IsAdmin: true` request header validated by `AdminAuthorizationMiddleware`.
 
-### Registration
+### Registration Flow
 
-1. POST /api/users with UserRegisterDTO
-2. Password strength ≥ 2 (zxcvbn); email unique
-3. Returns UserProfileDTO (no password)
+1. POST `/api/users` with `UserRegisterDTO`
+2. Password strength validated (zxcvbn score ≥ 2); email uniqueness checked
+3. Returns `UserProfileDTO` and sets `jwt` HttpOnly cookie
 
-### Login
+### Login Flow
 
-1. POST /api/users/login with UserLoginDTO
-2. Returns UserProfileDTO or 400
+1. POST `/api/users/login` with `UserLoginDTO`
+2. On success, sets `jwt` HttpOnly cookie and returns `UserProfileDTO`
+3. On failure, returns 400
+
+### Logout
+
+POST `/api/users/logout` — deletes the `jwt` cookie.
 
 ### Password Update
 
-PUT /api/users/{id} with UserUpdateDTO. If Password provided, OldPassword required; new password strength ≥ 2.
+PUT `/api/users/{id}` with `UserUpdateDTO`. If `Password` is provided, `OldPassword` is required and the new password must have strength ≥ 2.
 
 ### Admin Authorization
 
-- Path not `/api/admin` → pass through
-- POST /api/admin/inquiry → pass through (public)
-- Otherwise: require `IsAdmin: true` header; else 403
+- Requests to `/api/admin/*` require the `IsAdmin: true` header
+- POST `/api/admin/inquiry` is public (no header required)
+- AdminController additionally uses `[Authorize(Roles = "Admin")]`
 
-### Limitations
+### Cookie Settings
 
-- No session/token; stateless header-based
-- Role granularity: admin vs non-admin only
-- No per-resource ownership checks
+```
+HttpOnly: true
+Secure: true
+SameSite: Strict
+Expires: +8 hours
+```
 
 ---
 
@@ -481,34 +495,40 @@ PUT /api/users/{id} with UserUpdateDTO. If Password provided, OldPassword requir
 
 ### Order Creation
 
-1. POST /api/order with UserId, OrderItems (ProductId, StartDate, EndDate)
-2. For each item: validate product exists, skip Sale/מכירה, check availability, compute days × price
-3. If unavailable → 409 Conflict (Hebrew message)
-4. Total = sum of item totals; persist Order + OrderItems
+1. POST `/api/order` with `UserId` and `OrderItems` (ProductId, StartDate, EndDate)
+2. For each item with dates: availability is checked
+3. If unavailable → 409 Conflict
+4. For Sale-type products: `IsAvailable` is set to `false` after purchase
+5. Total = sum of `PriceAtPurchase` per item; `OrderDate` = UTC now
 
-### Availability (CheckAvailability)
+### Availability Check
 
-Returns false if: product missing/unavailable, Sale/מכירה, invalid dates, overlaps with existing OrderItems. Returns true if available.
+`GET /api/product/check-availability?productId=&start=&end=` returns `false` if:
+- Product not found or unavailable
+- TransactionType is "Sale"
+- Invalid/missing dates
+- Dates overlap with existing OrderItems
 
 ### Property Inquiry
 
-1. POST /api/propertyinquiry with ProductId, UserId, OwnerId, Name, Phone, Email, Message
-2. Status = "New"; save; return PropertyInquiryDTO
+1. POST `/api/propertyinquiry`
+2. Status defaults to `"New"`; saved and returned as `PropertyInquiryDTO`
 
 ### Admin Inquiry (Contact Form)
 
-1. POST /api/admin/inquiry (no auth) with Name, Email, Phone, Subject, Message
-2. Save AdminInquiry; send email to RecipientEmail; return AdminInquiryDTO
+1. POST `/api/admin/inquiry` (no auth required)
+2. Saves `AdminInquiry`; sends email to configured `RecipientEmail`
+3. Returns `AdminInquiryDTO`
 
 ### Image Upload
 
-1. POST /api/productimage/upload with multipart file
-2. Save to wwwroot/images/{Guid}.ext
-3. Return relative URL (e.g. /images/xxx.jpg)
+1. POST `/api/productimage/upload` with `multipart/form-data`
+2. Saved to `wwwroot/images/{Guid}.ext`
+3. Returns relative URL (e.g. `/images/xxx.jpg`)
 
 ### Occupied Dates
 
-GET /api/order/occupied-dates/{productId}?month=&year= returns dates already booked for that product.
+`GET /api/order/occupied-dates/{productId}?month=&year=` returns all booked dates for a product in the given month/year.
 
 ---
 
@@ -516,7 +536,13 @@ GET /api/order/occupied-dates/{productId}?month=&year= returns dates already boo
 
 ### Stack
 
-xUnit, Moq, Moq.EntityFrameworkCore, EF Core InMemory, Coverlet
+| Package | Purpose |
+|---------|---------|
+| xUnit 2.5.3 | Test framework |
+| Moq 4.20.72 | Mocking |
+| Moq.EntityFrameworkCore 8.0.1.7 | EF Core mocking |
+| EF Core InMemory 8.0.24 | In-memory DB for integration tests |
+| coverlet.collector 6.0.0 | Code coverage |
 
 ### Run Tests
 
@@ -527,19 +553,30 @@ dotnet test TestProject/TestProject.csproj --collect:"XPlat Code Coverage"
 
 ### DatabaseFixture
 
-Uses `UseInMemoryDatabase(Guid.NewGuid())` for isolated integration tests. Implement `IClassFixture<DatabaseFixture>` and use `_fixture.Context`.
+`DatabaseFixture` connects to a real SQL Server test database (`TestDataBase`) and calls `EnsureCreated()` / `EnsureDeleted()` for isolation. Implement `IClassFixture<DatabaseFixture>` in integration test classes.
+
+> Note: Tests currently use a hardcoded SQL Server connection string. For fully isolated tests, consider switching to `UseInMemoryDatabase`.
 
 ### Unit Tests
 
-Mock I*Repository, IMapper; test service logic.
+Mock `I*Repository` and `IMapper`; test service logic in isolation.
 
 ### Integration Tests
 
-Use real repositories with in-memory DB via DatabaseFixture.
+Use real repositories against the `DatabaseFixture` SQL Server test database.
 
 ### Existing Tests
 
-UserUnitTest, OrdersUnitTest, CategoriesUnitTest, ProductUnitTest, UserIntegrationTest, OrderIntegrationTest, CategoriesIntegrationTest, ProductIntegrationTest
+| File | Type |
+|------|------|
+| `UserUnitTest` | Unit |
+| `OrdersUnitTest` | Unit |
+| `CategoriesUnitTest` | Unit |
+| `ProductUnitTest` | Unit |
+| `UserIntegrationTest` | Integration |
+| `OrderIntegrationTest` | Integration |
+| `CategoriesIntegrationTest` | Integration |
+| `ProductIntegrationTest` | Integration |
 
 ---
 
@@ -547,34 +584,34 @@ UserUnitTest, OrdersUnitTest, CategoriesUnitTest, ProductUnitTest, UserIntegrati
 
 ### Adding a New Feature
 
-1. **Entity:** Create in Entities/, add DbSet to ShopContext, update SCRIPT.txt
-2. **DTOs:** Create in DTOs/, add mappings in AutoMapping.cs
-3. **Repository:** IMyEntityRepository + MyEntityRepository, register in Program.cs
-4. **Service:** IMyEntityService + MyEntityService, register in Program.cs
-5. **Controller:** MyEntityController with [Route("api/[controller]")]
+1. **Entity:** Create in `Entities/`, add `DbSet` to `ShopContext`, update `SCRIPT.txt`
+2. **DTOs:** Create in `DTOs/`, add mappings in `Services/AutoMapping.cs`
+3. **Repository:** `IMyEntityRepository` + `MyEntityRepository`, register in `Program.cs`
+4. **Service:** `IMyEntityService` + `MyEntityService`, register in `Program.cs`
+5. **Controller:** `MyEntityController` with `[Route("api/[controller]")]`
 6. **Tests:** Unit and integration tests
 
 ### Naming Conventions
 
-- Entity: singular (Product)
-- DTO: *DTO, *CreateDTO, *UpdateDTO
-- Repository: IProductRepository, ProductRepository
-- Service: IProductService, ProductService
-- Controller: ProductController → api/product
+- Entity: singular (`Product`)
+- DTO: `*DTO`, `*CreateDTO`, `*UpdateDTO`
+- Repository: `IProductRepository`, `ProductRepository`
+- Service: `IProductService`, `ProductService`
+- Controller: `ProductController` → `api/product`
 
 ### Code Style
 
-- Use async Task for I/O
-- Log with ILogger and structured messages
-- Return NotFound() for missing resources
+- Use `async Task` for all I/O operations
+- Log with `ILogger` and structured messages
+- Return `NotFound()` for missing resources
 - No circular project references
 
 ### Checklist
 
 - [ ] Tests added
-- [ ] No secrets in code
-- [ ] dotnet build succeeds
-- [ ] dotnet test passes
+- [ ] No secrets committed to source control
+- [ ] `dotnet build` succeeds
+- [ ] `dotnet test` passes
 
 ---
 
@@ -582,29 +619,32 @@ UserUnitTest, OrdersUnitTest, CategoriesUnitTest, ProductUnitTest, UserIntegrati
 
 ### Current State
 
-- No JWT; admin via `IsAdmin` header (spoofable)
-- Passwords: verify hashing in UsersRepository
-- No resource ownership checks
-- Secrets in appsettings (use User Secrets / env vars)
-- CORS restricted to localhost:4200
+- JWT auth via HttpOnly cookie (8hr expiry)
+- Admin access: JWT role + `IsAdmin: true` header
+- Passwords stored in plain text — **must be hashed**
+- Credentials (email SMTP password) in `appsettings.json` — **move to User Secrets / env vars**
+- No per-resource ownership checks (any authenticated user can update any product)
+- CORS restricted to `http://localhost:4200`
 - HTTPS supported
-- SQL injection: EF parameterized
+- SQL injection: EF Core parameterized queries
 
 ### Critical Risks
 
-1. **Admin header spoofing** – Implement JWT/sessions with server-side validation
-2. **Credentials in config** – Use User Secrets, env vars, Key Vault
-3. **Password storage** – Hash with bcrypt/Argon2
-4. **No ownership checks** – Add per-resource authorization
+1. **Plain-text passwords** – Hash with bcrypt or ASP.NET Core Identity
+2. **Credentials in appsettings** – Use User Secrets, env vars, or AWS Secrets Manager / Key Vault
+3. **Hardcoded connection string in Program.cs** – Use `builder.Configuration.GetConnectionString("DefaultConnection")`
+4. **No ownership checks** – Any authenticated user can edit/delete any product or order
+5. **Admin header easily spoofable** – The `IsAdmin` header check is a secondary check; rely on JWT role claims as the primary enforcement
 
 ### Deployment Checklist
 
-- [ ] Secrets externalized
+- [ ] Secrets externalized (no credentials in committed config files)
 - [ ] HTTPS enforced
-- [ ] CORS restricted to prod frontend
-- [ ] Passwords hashed
+- [ ] CORS restricted to production frontend URL
+- [ ] Passwords hashed (bcrypt / Argon2)
 - [ ] Swagger disabled in production
 - [ ] `dotnet list package --vulnerable` clean
+- [ ] Connection string uses config, not hardcoded value
 
 ---
 
@@ -612,13 +652,15 @@ UserUnitTest, OrdersUnitTest, CategoriesUnitTest, ProductUnitTest, UserIntegrati
 
 | Issue | Solution |
 |-------|----------|
-| SQL connection failed | Verify SQL Server running; fix Server in connection string |
-| Database does not exist | Run WebApiShop/SCRIPT.txt |
-| Port in use | Change in launchSettings.json |
-| CORS errors | Ensure frontend at http://localhost:4200 or update Program.cs |
-| NLog file not found | Create log dir or fix path in nlog.config |
-| MailKit errors | Check SMTP credentials; disable email target if unused |
+| SQL connection failed | Verify SQL Server is running; fix `Server` value in connection string |
+| Database does not exist | Run `WebApiShop/SCRIPT.txt` in SSMS |
+| Port in use | Change URL in `launchSettings.json` |
+| CORS errors | Ensure frontend runs at `http://localhost:4200` or update `Program.cs` |
+| NLog file not found | Create log directory or fix path in `nlog.config` |
+| MailKit errors | Check SMTP credentials in `appsettings.json`; disable email target if unused |
+| JWT not sent | Ensure requests include credentials (cookies); check `SameSite` / `Secure` settings in dev |
+| 403 on admin routes | Include `IsAdmin: true` header and ensure JWT has Admin role |
 
 ---
 
-*Last updated: March 2026*
+*Last updated: 2025*

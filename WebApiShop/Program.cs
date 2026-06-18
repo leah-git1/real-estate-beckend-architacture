@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -11,6 +11,7 @@ using System.Text;
 using WebApiShop;
 using WebApiShop.Middleware;
 
+DotNetEnv.Env.Load();
 var builder = WebApplication.CreateBuilder(args);
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
@@ -70,9 +71,11 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization();
 
+var redisConnectionString = builder.Configuration.GetConnectionString("Redis");
 
-var redisConnection = builder.Configuration["Redis:Connection"] ?? "localhost:6379,password=redis_password_2024";
-var redis = ConnectionMultiplexer.Connect(redisConnection);
+var connectionString_ = redisConnectionString ?? "localhost:6379";
+
+var redis = ConnectionMultiplexer.Connect(connectionString_);
 builder.Services.AddSingleton<IConnectionMultiplexer>(redis);
 builder.Services.AddScoped<ICacheService, CacheService>();
 
