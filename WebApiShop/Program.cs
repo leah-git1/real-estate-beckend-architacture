@@ -1,8 +1,11 @@
 ﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Http;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using NLog.Web;
+using Polly;
+using Polly.Extensions.Http;
 using Repositories;
 using Repository;
 using Services;
@@ -81,6 +84,29 @@ builder.Services.AddScoped<ICacheService, CacheService>();
 
 
 builder.Services.AddSingleton<IKafkaProducerService, KafkaProducerService>();
+
+// ── HTTP Client with Polly Retry Policy ───────────────────────────────────────
+// Retries on transient errors (5xx, network failures) and 429 Too Many Requests
+// Exponential backoff: 500ms, 1000ms, 2000ms
+builder.Services.AddHttpClient("RealEstateClient")
+    .AddPolicyHandler(HttpPolicyExtensions
+        .HandleTransientHttpError()                          
+        .OrResult(msg => msg.StatusCode ==
+            System.Net.HttpStatusCode.TooManyRequests)       
+        .WaitAndRetryAsync(
+            retryCount: 3,
+            sleepDurationProvider: (retryAttempt, response, _) =>
+            {
+                // If server sends Retry-After header, respect it
+                var retryAfter = response?.Result?.Headers?.RetryAfter?.Delta;
+                return retryAfter ?? TimeSpan.FromMilliseconds(500 * Math.Pow(2, retryAttempt - 1));
+            },
+            onRetryAsync: (outcome, timespan, retryAttempt, _) =>
+            {
+                Console.WriteLine($"[Polly] Retry {retryAttempt}/3 after {timespan.TotalMilliseconds}ms — Reason: {outcome.Exception?.Message ?? outcome.Result?.StatusCode.ToString()}");
+                return Task.CompletedTask;
+            })
+    );
 
 builder.Host.UseNLog();
 
