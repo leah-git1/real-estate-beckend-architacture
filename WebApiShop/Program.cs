@@ -73,12 +73,20 @@ builder.Services.AddAuthentication(options =>
 });
 
 builder.Services.AddAuthorization();
+var redisConnectionString = Environment.GetEnvironmentVariable("REDIS_CONNECTION");
 
-var redisConnectionString = builder.Configuration.GetConnectionString("Redis");
+var connectionString_ = redisConnectionString ?? "localhost:6380,password=redis_password_2024";
 
-var connectionString_ = redisConnectionString ?? "localhost:6379";
+Console.WriteLine($"DEBUG: Connection String is: {connectionString_}");
 
 var redis = ConnectionMultiplexer.Connect(connectionString_);
+builder.Services.AddSingleton<IConnectionMultiplexer>(redis);
+
+//var redisConnectionString = builder.Configuration.GetConnectionString("Redis");
+
+//var connectionString_ = redisConnectionString ?? "localhost:6380, password=";
+Console.WriteLine($"DEBUG: Connection String is: {connectionString_}"); // תראי מה מודפס ב-Output
+//var redis = ConnectionMultiplexer.Connect(connectionString_);
 builder.Services.AddSingleton<IConnectionMultiplexer>(redis);
 builder.Services.AddScoped<ICacheService, CacheService>();
 
